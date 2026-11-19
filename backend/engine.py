@@ -9,7 +9,7 @@ So White is the MAX player and Black is the MIN player. An evaluation function t
 
 How the search works
 --------------------
-1. Minimax: from the current position, try every legal move, recursively
+1. Minmax: from the current position, try every legal move, recursively
    score the resulting positions down to a fixed depth (plies), and assume
    both sides pick the move that is best for them (White maximises, Black
    minimises). Positions at depth 0 are scored by the evaluation function.
@@ -18,7 +18,7 @@ How the search works
        beta  = best score Black is already guaranteed elsewhere
    As soon as alpha >= beta, the opponent would never allow this line, so
    the remaining moves at that node are skipped ("cut off"). The result is
-   identical to plain Minimax, but far fewer positions are visited.
+   identical to plain Minmax, but far fewer positions are visited.
 3. Move ordering: Alpha-Beta prunes most when good moves are searched first,
    so captures (most valuable victim first), promotions and checks go first.
 4. Quiescence search (optional, on by default): instead of evaluating a
@@ -118,12 +118,12 @@ class SearchResult:
 
 
 class Search:
-    """One Minimax search over a position.
+    """One Minmax search over a position.
 
     Parameters
     ----------
     evaluate:     the evaluation function (White's point of view).
-    alpha_beta:   prune with Alpha-Beta (False = plain Minimax, for testing).
+    alpha_beta:   prune with Alpha-Beta (False = plain Minmax, for testing).
     quiescence:   extend leaf positions with a captures-only search.
     abort_check:  called every ABORT_CHECK_INTERVAL nodes; it may raise
                   ``SearchAborted`` to stop the search.
@@ -159,7 +159,7 @@ class Search:
             if self.abort_check:                       # also check between root moves
                 self.abort_check()
             board.push(move)
-            score = self.minimax(board, depth - 1, alpha, beta, ply=1)
+            score = self.minmax(board, depth - 1, alpha, beta, ply=1)
             board.pop()
 
             if (maximizing and score > best_score) or (not maximizing and score < best_score):
@@ -173,9 +173,9 @@ class Search:
         return SearchResult(best_move, best_score, self.stats)
 
     # --------------------------------------------------------- recursion
-    def minimax(self, board: chess.Board, depth: int, alpha: float,
+    def minmax(self, board: chess.Board, depth: int, alpha: float,
                 beta: float, ply: int) -> float:
-        """Minimax value of ``board`` searched ``depth`` more plies.
+        """Minmax value of ``board`` searched ``depth`` more plies.
 
         ``ply`` is the distance from the root, used to prefer faster mates.
         """
@@ -203,7 +203,7 @@ class Search:
 
         for move in order_moves(board, moves):
             board.push(move)
-            score = self.minimax(board, depth - 1, alpha, beta, ply + 1)
+            score = self.minmax(board, depth - 1, alpha, beta, ply + 1)
             board.pop()
 
             if maximizing:
@@ -275,10 +275,10 @@ def find_best_move(board: chess.Board, depth: int, evaluate: Evaluator,
     return Search(evaluate, alpha_beta, quiescence).run(board.copy(), depth)
 
 
-class MinimaxAgent(Agent):
-    """An ``Agent`` that chooses moves with the shared Minimax search.
+class MinmaxAgent(Agent):
+    """An ``Agent`` that chooses moves with the shared Minmax search.
 
-    Each partner's agent is a ``MinimaxAgent`` with its own ``evaluate``.
+    Each partner's agent is a ``MinmaxAgent`` with its own ``evaluate``.
     ``depth`` can be changed between moves (the GUI's difficulty buttons)
     and is always kept inside [MIN_DEPTH, MAX_DEPTH].
     """

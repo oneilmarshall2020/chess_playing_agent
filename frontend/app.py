@@ -13,42 +13,52 @@ import pygame
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))      
 
-from board_view import (BACKGROUND, BOARD_SIZE, MUTED, PANEL_INNER, PANEL_X, TEXT,
-                 Button, Renderer)
+from board_view import (BACKGROUND, BOARD_SIZE, MUTED, PANEL_INNER, PANEL_X, TEXT, Button, BoardView)
+from backend.agents import agent_a, agent_d
 
 MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH = 1, 4, 3
 
-# (module, class) for each agent. Index 0 = yours (defensive), 1 = partner's.
-AGENT_TYPES = [("backend.agents.agent_d", "DefensiveAgent"),
-               ("backend.agents.agent_a", "AggressiveAgent")]
+# (module, class) for each agent. Index 0 = defensive, 1 = aggressive.
+AGENT_MODULES = [("agent_d", "DefensiveAgent"),
+               ("agent_a", "AggressiveAgent")]
+
+AGENT_NAMES = [cls.replace("Agent", "") for _, cls in AGENT_MODULES]
 
 
 #----------------------------------------------------------------------------------Agents
+
+#Stand-in used only if an agent module can't be imported (keeps the GUI testable).
 class PlaceholderAgent:
-    """Stand-in used only if an agent module can't be imported (keeps the GUI testable)."""
 
     def __init__(self, name):
         self.name = name
         self.depth = 2
+
 
     def play(self, board):
         time.sleep(0.8)
         moves = list(board.legal_moves)
         return random.choice([m for m in moves if board.is_capture(m)] or moves)
 
+
     def abort(self):
         pass
+
 
 #Create a FRESH instance of agent ``index`` (placeholder if import fails).
 #A fresh instance per game means an aborted search from a previous game can never interfere with the new one through shared state.
 def load_agent(index):
-    module_name, class_name = AGENT_TYPES[index]
-    try:
-        return getattr(importlib.import_module(module_name), class_name)()
-    except Exception as error:
-        print(f"[app] could not load {module_name}.{class_name} ({error}); using placeholder")
-        return PlaceholderAgent(class_name.replace("Agent", ""))
+    if not 0 <= index < len(AGENT_MODULES):
+        raise IndexError(f"Unknown agent index: {index}")
 
+    module_name, class_name = AGENT_MODULES[index]
+    try:
+        module = importlib.import_module(f"backend.agents.{module_name}")
+        agent_class = getattr(module, class_name)
+        return agent_class()
+    except (ImportError, AttributeError) as exc:
+        print(f"Could not load {class_name}: {exc}")
+        return PlaceholderAgent(class_name.replace("Agent", ""))
 
 def get_depth(agent):
     return getattr(agent, "depth", DEFAULT_DEPTH)
@@ -123,6 +133,8 @@ class Game:
                 for m in self.board.legal_moves if m.from_square == self.selected]
 
     # ------------------------------------------------------------------- moves
+    
+    #Play a legal move and record it in the move list.
     def push_move(self, move):
         self.san_moves.append(self.board.san(move))
         self.board.push(move)
@@ -163,8 +175,9 @@ class Game:
         self.push_move(chess.Move(from_square, to_square, promotion=piece_type))
 
     # ------------------------------------------------------------ Agent search
+    
+    #Run agent.play() in a worker thread so the window stays responsive.
     def start_search(self, agent):
-        """Run agent.play() in a worker thread so the window stays responsive."""
         self.thinking, self.thinking_agent, self.think_start = True, agent, time.time()
         token, snapshot, started = self.token, self.board.copy(), self.think_start
 
@@ -178,6 +191,7 @@ class Game:
             self.results.put((token, move, time.time() - started))
 
         threading.Thread(target=work, daemon=True).start()
+
 
     def abort_search(self):
         """Cancel the running search and switch Auto off."""
@@ -218,6 +232,7 @@ class Game:
         self.auto = not self.auto
         self.status_message = ""
 
+    #Allows the agent-to-move by exactly one move.
     def step_once(self):
         self.view_ply = None
         if not self.thinking and not self.is_over():
@@ -256,7 +271,7 @@ class App:
     #Window, menu screen, game screen and the main loop.
 
     def __init__(self):
-        self.gfx = Renderer()
+        self.view = BoardView()
         self.clock = pygame.time.Clock()
         self.mouse_pos = (0, 0)
         self.running = True
@@ -272,12 +287,14 @@ class App:
         self.mode = "hva"
         self.opponent = 0
 
+        self.menu_x = (self.view.screen.get_width() - 380) // 2
         self.menu_buttons = self._build_menu_buttons()
         self.game_buttons = []
 
     # -------------------------------------------------------------- navigation
+    
+    #Create fresh agents and a new Game, then switch to the game screen.
     def start_game(self, mode, opponent=0):
-        """Create fresh agents and a new Game, then switch to the game screen."""
         if self.game:
             self.game.close()
         self.mode, self.opponent = mode, opponent
@@ -309,8 +326,7 @@ class App:
 
     # ----------------------------------------------------------------- buttons
     def _build_menu_buttons(self):
-        cx = (self.gfx.screen.get_width() - 380) // 2
-        names = [load_name for load_name in (t[1].replace("Agent", "") for t in AGENT_TYPES)]
+        x = self.menu_x
 
         def toggle_colour():
             self.human_white = not self.human_white
@@ -322,20 +338,18 @@ class App:
             self.depths[i] = max(MIN_DEPTH, min(MAX_DEPTH, self.depths[i] + d))
 
         buttons = [
-            Button((cx, 150, 380, 38), f"Play vs {names[0]} agent", lambda: self.start_game("hva", 0)),
-            Button((cx, 196, 380, 38), f"Play vs {names[1]} agent", lambda: self.start_game("hva", 1)),
-            Button((cx, 242, 380, 34), lambda: "You play: " + ("White" if self.human_white else "Black"),
+            Button((x, 150, 380, 38), f"Play vs {AGENT_NAMES[0]} agent", lambda: self.start_game("hva", 0)),
+            Button((x, 196, 380, 38), f"Play vs {AGENT_NAMES[1]} agent", lambda: self.start_game("hva", 1)),
+            Button((x, 242, 380, 34), lambda: "You play: " + ("White" if self.human_white else "Black"),
                    toggle_colour),
-            Button((cx, 296, 380, 38), "Agent vs Agent", lambda: self.start_game("ava")),
-            Button((cx, 342, 380, 34), lambda: f"White: {names[self.white_agent]}  (click to swap)", swap_white),
+            Button((x, 296, 380, 38), "Agent vs Agent", lambda: self.start_game("ava")),
+            Button((x, 342, 380, 34), lambda: f"White: {AGENT_NAMES[self.white_agent]}  (click to swap)", swap_white),
         ]
         for i in (0, 1):
-            y = 396 + i * 38
-            buttons.append(Button((cx + 250, y, 30, 28), "-", lambda i=i: depth(i, -1)))
-            buttons.append(Button((cx + 350, y, 30, 28), "+", lambda i=i: depth(i, +1)))
-        buttons.append(Button((cx, 480, 380, 34), "Quit", self.quit))
-        self.depth_labels = names
-        self.menu_cx = cx
+            y = 400 + i * 36
+            buttons.append(Button((x + 250, y, 30, 28), "-", lambda i=i: depth(i, -1)))
+            buttons.append(Button((x + 350, y, 30, 28), "+", lambda i=i: depth(i, +1)))
+        buttons.append(Button((x, 480, 380, 34), "Quit", self.quit))
         return buttons
 
     def _build_game_buttons(self):
@@ -376,12 +390,12 @@ class App:
         else:
             self._game_event(event)
 
-    def _click_buttons(self, buttons, pos):
+    @staticmethod
+    def _click_buttons(buttons, pos):
         for button in buttons:
             if button.rect.collidepoint(pos):
                 button.action()
-                return True
-        return False
+                return 
 
     def _menu_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -404,49 +418,50 @@ class App:
             if event.pos[0] >= BOARD_SIZE:
                 self._click_buttons(self.game_buttons, event.pos)      # may leave the game
             elif g.promotion_move:
-                for piece_type, rect in self.gfx.promotion_rects():
+                for piece_type, rect in self.view.promotion_rects():
                     if rect.collidepoint(event.pos):
                         g.choose_promotion(piece_type)
                         return
                 g.promotion_move = None                                # click elsewhere cancels
             elif g.can_human_move():
-                g.click_board(self.gfx.xy_to_square(event.pos, g.flipped))
+                g.click_board(self.view.xy_to_square(event.pos, g.flipped))
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and g.dragging:
-            g.release(self.gfx.xy_to_square(event.pos, g.flipped))
+            g.release(self.view.xy_to_square(event.pos, g.flipped))
 
     # ----------------------------------------------------------------- drawing
     def draw_menu(self):
-        g, cx = self.gfx, self.menu_cx
-        w = g.screen.get_width()
-        g.text("Chess Lab", g.font_big, TEXT, (w // 2, 70), center=True)
-        g.text("Minimax with Alpha-Beta Pruning", g.font, MUTED, (w // 2, 112), center=True)
-        g.text("Search depth (plies)", g.font_bold, MUTED, (cx, 372 + 0))
-        g.draw_buttons(self.menu_buttons, self.mouse_pos)
+        v, x = self.view, self.menu_x
+        mid = v.screen.get_width()
+        v.text("COMP3220 Chess AI", v.font_big, TEXT, (mid // 2, 70), center=True)
+        v.text("Minmax with Alpha-Beta Pruning", v.font, MUTED, (mid // 2, 112), center=True)
+
+        v.text("Search depth: ", v.font_bold, MUTED, (x, 372 + 0))
+        v.draw_buttons(self.menu_buttons, self.mouse_pos)
         for i in (0, 1):
             y = 396 + i * 38
-            g.text(f"{self.depth_labels[i]} agent", g.font, TEXT, (cx, y + 4))
-            g.text(str(self.depths[i]), g.font_bold, TEXT, (cx + 315, y + 14), center=True)
+            v.text(f"{AGENT_NAMES[i]} agent", v.font, TEXT, (x, y + 4))
+            v.text(str(self.depths[i]), v.font_bold, TEXT, (x + 315, y + 14), center=True)
 
     def draw_game(self):
-        g, game = self.gfx, self.game
-        shown = game.shown_board()
-        live = game.view_ply is None
-        promo = game.board.turn if game.promotion_move else None
-        g.draw_board(shown, game.flipped, game.last_move(),
-                     game.selected if live else None,
-                     game.targets() if live else (),
-                     game.selected if (game.dragging and live) else None,
-                     self.mouse_pos, promo)
+        v, g = self.view, self.game
+        shown = g.shown_board()
+        live = g.view_ply is None
+        promo = g.board.turn if g.promotion_move else None
+        v.draw_board(g.shown_board(), g.flipped, g.last_move(),
+                     g.selected if live else None,
+                     g.targets() if live else (),
+                     g.selected if (g.dragging and live) else None,
+                     self.mouse_pos, g.board.turn if g.promotion_move else None)
 
-        g.draw_panel_background()
-        g.draw_buttons(self.game_buttons, self.mouse_pos)
+        v.draw_panel_background()
+        v.draw_buttons(self.game_buttons, self.mouse_pos)
         for i, agent in enumerate(self.agents):
             y = 128 + i * 34
-            g.text(f"{agent.name} depth", g.font, MUTED, (PANEL_X, y + 3))
-            g.text(str(get_depth(agent)), g.font_bold, TEXT, (PANEL_X + PANEL_INNER - 55, y + 13), center=True)
-        headline, detail = game.status_lines()
-        g.draw_status(headline, detail, game.thinking, time.time() * 1.2)
-        g.draw_move_list(game.san_moves, game.shown_ply())
+            v.text(f"{agent.name} depth", v.font, MUTED, (PANEL_X, y + 3))
+            v.text(str(get_depth(agent)), v.font_bold, TEXT, (PANEL_X + PANEL_INNER - 55, y + 13), center=True)
+        headline, detail = g.status_lines()
+        #v.draw_status(headline, detail, g.thinking, time.time() * 1.2)
+        v.draw_move_list(g.san_moves, g.shown_ply())
 
     # --------------------------------------------------------------- main loop
     def run(self):
@@ -455,7 +470,7 @@ class App:
                 self.handle_event(event)
             if self.game:
                 self.game.update()
-            self.gfx.screen.fill(BACKGROUND)
+            self.view.screen.fill(BACKGROUND)
             if self.screen_name == "menu":
                 self.draw_menu()
             else:

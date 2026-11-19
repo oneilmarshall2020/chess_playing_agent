@@ -33,6 +33,7 @@ HINT = (90, 90, 90)
 PROMOTION_PIECES = (chess.QUEEN, chess.ROOK, chess.KNIGHT, chess.BISHOP)
 PIECE_SYMBOLS = {chess.PAWN: "P", chess.KNIGHT: "N", chess.BISHOP: "B",
                  chess.ROOK: "R", chess.QUEEN: "Q", chess.KING: "K"}
+
 FONT_NAMES = "segoeui,helvetica,arial"
 
 
@@ -47,9 +48,8 @@ class Button:
     def text(self):
         return self.label() if callable(self.label) else self.label
 
-
-class Renderer:
-    """Owns the pygame window and every drawing routine."""
+#Pygame window and drawings/renderings
+class BoardView:
 
     def __init__(self):
         pygame.init()
@@ -64,8 +64,9 @@ class Renderer:
         self._backgrounds = {}
 
     # ------------------------------------------------------------ assets
+    
+    #Loads the 12 piece PNGs (frontend/images/wP.png ...), with fallbacks.
     def _load_images(self):
-        """Load the 12 piece PNGs (frontend/images/wP.png ...), with fallbacks."""
         images = {}
         for piece_type, symbol in PIECE_SYMBOLS.items():
             for color, letter in ((chess.WHITE, "w"), (chess.BLACK, "b")):
@@ -77,8 +78,8 @@ class Renderer:
                     images[(piece_type, color)] = self._fallback_piece(symbol, color)
         return images
 
+    #Allows a lettered disk to be used when the image for piece is missing or fails to load
     def _fallback_piece(self, symbol, color):
-        """A lettered disk, used when a piece image is missing."""
         surface = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
         fill, ink = ((250, 250, 250), (20, 20, 20)) if color == chess.WHITE else ((40, 40, 40), (240, 240, 240))
         center = (SQUARE // 2, SQUARE // 2)
@@ -88,8 +89,8 @@ class Renderer:
         surface.blit(label, label.get_rect(center=center))
         return surface
 
+    #Uses board squares from chess.svg. Plain squares if SVG fails to render.
     def _background(self, flipped):
-        """Board squares (cached per orientation); plain squares if SVG loading fails."""
         if flipped not in self._backgrounds:
             try:
                 svg = chess.svg.board(size=BOARD_SIZE, coordinates=False,
@@ -105,17 +106,18 @@ class Renderer:
         return self._backgrounds[flipped]
 
     # ------------------------------------------------------- coordinates
+    
+    #Top-left pixel of a square.
     @staticmethod
     def square_to_xy(square, flipped):
-        """Top-left pixel of a square."""
         file, rank = chess.square_file(square), chess.square_rank(square)
         if flipped:
             return (7 - file) * SQUARE, rank * SQUARE
         return file * SQUARE, (7 - rank) * SQUARE
 
+    #Square under a pixel, or None if off the board.
     @staticmethod
     def xy_to_square(pos, flipped):
-        """Square under a pixel, or None if off the board."""
         x, y = pos
         if not (0 <= x < BOARD_SIZE and 0 <= y < BOARD_SIZE):
             return None
@@ -124,9 +126,9 @@ class Renderer:
             file, rank = 7 - file, 7 - rank
         return chess.square(file, rank)
 
+    #Clickable squares for the promotion picker, centred on the board.
     @staticmethod
     def promotion_rects():
-        """Clickable squares for the promotion picker, centred on the board."""
         left = BOARD_SIZE // 2 - 2 * SQUARE
         return [(p, pygame.Rect(left + i * SQUARE, BOARD_SIZE // 2 - SQUARE // 2, SQUARE, SQUARE))
                 for i, p in enumerate(PROMOTION_PIECES)]
@@ -144,15 +146,7 @@ class Renderer:
 
     def draw_board(self, shown, flipped, last_move=None, selected=None, targets=(),
                    drag_square=None, mouse_pos=(0, 0), promo_color=None):
-        """Draw squares, labels, highlights, hints and pieces.
 
-        shown       -- the chess.Board position to display
-        last_move   -- chess.Move to highlight (or None)
-        selected    -- selected square (or None)
-        targets     -- iterable of (square, is_capture) legal-move hints
-        drag_square -- square whose piece is following the mouse (or None)
-        promo_color -- if set, show the promotion picker for that colour
-        """
         self.screen.blit(self._background(flipped), (0, 0))
 
         for square in chess.SQUARES:                    # rank / file labels
@@ -204,12 +198,12 @@ class Renderer:
             pygame.draw.rect(self.screen, BUTTON_HOVER if hovered else BUTTON, button.rect, border_radius=6)
             self.text(button.text(), self.font_bold, TEXT, button.rect.center, center=True)
 
-    def draw_panel_background(self, title="Chess Lab"):
+    def draw_panel_background(self, title="Chess Agent"):
         pygame.draw.rect(self.screen, PANEL, (BOARD_SIZE, 0, PANEL_WIDTH, BOARD_SIZE))
         self.text(title, self.font_title, TEXT, (PANEL_X, 10))
 
-    def draw_status(self, headline, detail, thinking, think_phase, top=284):
-        """Status box; shows a sliding bar while an agent is thinking."""
+    """def draw_status(self, headline, detail, thinking, think_phase, top=284):
+    #   Status box; shows a sliding bar while an agent is thinking.
         box = pygame.Rect(PANEL_X, top, PANEL_INNER, 62)
         pygame.draw.rect(self.screen, BACKGROUND, box, border_radius=6)
         self.text(headline, self.font_bold, ACCENT if thinking else TEXT, (box.x + 10, box.y + 8))
@@ -219,10 +213,11 @@ class Renderer:
             pygame.draw.rect(self.screen, BUTTON, bar, border_radius=2)
             t = think_phase % 2
             slider = pygame.Rect(bar.x + int((t if t <= 1 else 2 - t) * (bar.w - 60)), bar.y, 60, 4)
-            pygame.draw.rect(self.screen, ACCENT, slider, border_radius=2)
+            pygame.draw.rect(self.screen, ACCENT, slider, border_radius=2)"""
 
+
+    #Two-column move list; the displayed move is highlighted.
     def draw_move_list(self, san_moves, shown_ply, top=358):
-        """Two-column move list; the displayed move is highlighted."""
         self.text("Moves", self.font_bold, MUTED, (PANEL_X, top))
         area = pygame.Rect(PANEL_X, top + 24, PANEL_INNER, BOARD_SIZE - top - 34)
         pygame.draw.rect(self.screen, BACKGROUND, area, border_radius=6)
