@@ -1,14 +1,13 @@
-#Holds eval function
-import os
 import math
+import os
 import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+
 import chess
+
 from backend.base import DEFAULT_DEPTH
 from backend.engine import MinmaxAgent, PIECE_VALUES, Search, material_evaluation
-
-# Put the project root (the folder containing backend/ and frontend/) on sys.path so the
-# `backend.` imports work no matter where this file is run or imported from.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 LOSS_AVERSION = 1.15            # weight on our own material (opponent's counts 1.0)
 LEAD_THRESHOLD = 200            # "ahead" = at least two pawns up
