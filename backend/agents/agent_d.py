@@ -1,15 +1,14 @@
 #Holds eval function
 import os
+import math
 import sys
+import chess
+from backend.base import DEFAULT_DEPTH
+from backend.engine import MinmaxAgent, PIECE_VALUES, Search, material_evaluation
 
 # Put the project root (the folder containing backend/ and frontend/) on sys.path so the
 # `backend.` imports work no matter where this file is run or imported from.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-import chess
-
-from backend.base import DEFAULT_DEPTH
-from backend.engine import MinmaxAgent, PIECE_VALUES
 
 LOSS_AVERSION = 1.15            # weight on our own material (opponent's counts 1.0)
 LEAD_THRESHOLD = 200            # "ahead" = at least two pawns up
@@ -39,6 +38,28 @@ class DefensiveAgent(MinmaxAgent):
     def choose_move(self, board):
         self.color = board.turn
         return super().choose_move(board)
+
+    #------------------------------------------------------------- Draw offers
+
+    #Return True if this agent accepts a draw offered in board (the human's turn).
+    def accept_draw(self, board):
+        balance = Search(material_evaluation).quiesce(board.copy(), -math.inf, math.inf, 0)
+        agent_is_white = board.turn == chess.BLACK                      # the human is to move
+        agent_balance = balance if agent_is_white else -balance
+        return agent_balance < LEAD_THRESHOLD
+
+    #------------------------------------------------------------- Search stats
+
+    #function below really is doing what the match file should
+    #One line describing the last search: depth, nodes, Alpha-Beta cutoffs, time and score.
+    def search_summary(self):
+        result = self.last_result
+        if result is None:
+            return "no search yet"
+        stats = result.stats
+        return (f"depth {stats.depth}: {stats.nodes} nodes, {stats.cutoffs} cutoffs, "
+                f"{stats.seconds:.2f}s, score {result.score:+.0f}")
+
 
     # ------------------------------------------------------------ Board evaluation
     #Score board from White's point of view (centipawns); see the engine's score convention.
@@ -128,9 +149,10 @@ class DefensiveAgent(MinmaxAgent):
 
     #If more pieces ahead, rewards for trading pieces off the board for simplification.
     def _simplification_bonus(self, board):
-        mine = self._material(board, self.color)
-        theirs = self._material(board, not self.color)
-        if mine - theirs < LEAD_THRESHOLD:
+        lead = material_evaluation(board)
+        if self.color == chess.BLACK:
+            lead = -lead
+        if lead < LEAD_THRESHOLD:
             return 0
         non_pawn = sum(PIECE_VALUES[p.piece_type] for p in board.piece_map().values()
                        if p.piece_type not in (chess.PAWN, chess.KING))

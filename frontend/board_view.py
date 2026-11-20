@@ -8,20 +8,26 @@ import pygame
 
 #------------------------------------------------------------------------------------------Assignments
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+IMAGES_DIR = os.path.join(BASE_DIR, "images") 
 
 SQUARE = 72
 BOARD_SIZE = SQUARE * 8
 PANEL_WIDTH = 360
 PANEL_X = BOARD_SIZE + 14
 PANEL_INNER = PANEL_WIDTH - 28
+PANEL_CENTRE_X = BOARD_SIZE + PANEL_WIDTH // 2
 WINDOW_SIZE = (BOARD_SIZE + PANEL_WIDTH, BOARD_SIZE)
 
 BACKGROUND = (38, 36, 33)
 PANEL = (49, 46, 43)
 BUTTON = (72, 69, 65)
 BUTTON_HOVER = (95, 92, 87)
+BUTTON_DISABLED = (58, 56, 53)
+RED = (176, 48, 48)
+RED_HOVER = (205, 70, 70)
 TEXT = (235, 235, 235)
 MUTED = (160, 160, 160)
+DISABLED_TEXT = (110, 110, 110)
 ACCENT = (129, 182, 76)
 LIGHT_SQ = (240, 217, 181)
 DARK_SQ = (181, 136, 99)
@@ -36,17 +42,38 @@ PIECE_SYMBOLS = {chess.PAWN: "P", chess.KNIGHT: "N", chess.BISHOP: "B",
 
 FONT_NAMES = "segoeui,helvetica,arial"
 
+MOVES_TOP = 176
+MOVES_BOTTOM = BOARD_SIZE - 58
+CONTROLS_Y = MOVES_BOTTOM + 10
+MOVE_ROW_HEIGHT = 22
+
+# Colour-choice tiles on the menu: key -> image file in frontend/images/
+CHOICE_NAMES = {"white": "WhiteChoice", "random": "RandomChoice", "black": "BlackChoice"}
+TILE_SIZE = 64
+
 
 class Button:
     """A clickable rectangle. ``label`` may be a string or a zero-arg function."""
 
-    def __init__(self, rect, label, action):
+    def __init__(self, rect, label, action, color = None, enabled = None):
         self.rect = pygame.Rect(rect)
         self.label = label
         self.action = action
+        self.color = color
+        self.enabled = enabled
 
     def text(self):
         return self.label() if callable(self.label) else self.label
+
+    def is_enabled(self):
+        return self.enabled is None or bool(self.enabled())
+
+#A square image button used for the colour choice (white / random / black).
+class Tile(Button):
+    def __init__(self, rect, key, action):
+        super().__init__(rect, "", action)
+        self.key = key
+
 
 #Pygame window and drawings/renderings
 class BoardView:
@@ -61,6 +88,7 @@ class BoardView:
         self.font_bold = pygame.font.SysFont(FONT_NAMES, 16, bold=True)
         self.font_small = pygame.font.SysFont(FONT_NAMES, 12, bold=True)
         self.images = self._load_images()
+        self.choice_images = self._load_choice_images()
         self._backgrounds = {}
 
     # ------------------------------------------------------------ assets
@@ -87,6 +115,28 @@ class BoardView:
         pygame.draw.circle(surface, ink, center, SQUARE // 2 - 8, 2)
         label = self.font_title.render(symbol, True, ink)
         surface.blit(label, label.get_rect(center=center))
+        return surface
+
+    #Load the white / random / black selection tiles from the images folder.
+    def _load_choice_images(self):
+        images = {}
+        for key, name in CHOICE_NAMES.items():
+            path = os.path.join(IMAGES_DIR, f"{name}.png")
+            try:
+                image = pygame.image.load(path).convert_alpha()
+                images[key] = pygame.transform.smoothscale(image, (TILE_SIZE, TILE_SIZE))
+            except (pygame.error, FileNotFoundError):
+                images[key] = self._fallback_choice(key)
+        return images
+
+    def _fallback_choice(self, key):
+        surface = pygame.Surface((TILE_SIZE, TILE_SIZE))
+        fill, ink, symbol = {"white": ((20, 20, 20), (240, 240, 240), "W"),
+                             "black": ((240, 240, 240), (20, 20, 20), "B"),
+                             "random": ((240, 240, 240), (20, 20, 20), "?")}[key]
+        surface.fill(fill)
+        label = self.font_title.render(symbol, True, ink)
+        surface.blit(label, label.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
         return surface
 
     #Uses board squares from chess.svg. Plain squares if SVG fails to render.
@@ -138,6 +188,43 @@ class BoardView:
         image = font.render(text, True, color)
         rect = image.get_rect(center=pos) if center else image.get_rect(topleft=pos)
         self.screen.blit(image, rect)
+
+    def _font(self, size, bold=True):
+        cache = self.__dict__.setdefault("_font_cache", {})
+        if (size, bold) not in cache:
+            cache[(size, bold)] = pygame.font.SysFont(FONT_NAMES, size, bold=bold)
+        return cache[(size, bold)]
+
+    def fit_font(self, text, max_size, max_width, bold=True):
+        for size in range(max_size, 9, -2):
+            font = self._font(size, bold)
+            if font.size(text)[0] <= max_width:
+                return font
+        return self._font(10, bold)
+
+    def wrap_text(self, text, font, max_width):
+        lines, line = [], ""
+        for word in text.split():
+            trial = f"{line} {word}".strip()
+            if font.size(trial)[0] <= max_width or not line:
+                line = trial
+            else:
+                lines.append(line)
+                line = word
+        if line:
+            lines.append(line)
+        return lines
+
+    def text_at(self, text, font, color, pos, anchor="center"):
+        image = font.render(text, True, color)
+        self.screen.blit(image, image.get_rect(**{anchor: pos}))
+
+    def draw_panel_background(self, title="Chess Agents", subtitle=""):
+        pygame.draw.rect(self.screen, PANEL, (BOARD_SIZE, 0, PANEL_WIDTH, BOARD_SIZE))
+        self.text_at(title, self.fit_font(title, 24, PANEL_INNER), TEXT, (PANEL_CENTRE_X, 24))
+        if subtitle:
+            self.text_at(subtitle, self.fit_font(subtitle, 16, PANEL_INNER, bold=False), MUTED,
+                         (PANEL_CENTRE_X, 50))
 
     def _tint(self, square, color, flipped):
         overlay = pygame.Surface((SQUARE, SQUARE), pygame.SRCALPHA)
@@ -194,45 +281,67 @@ class BoardView:
 
     def draw_buttons(self, buttons, mouse_pos):
         for button in buttons:
-            hovered = button.rect.collidepoint(mouse_pos)
-            pygame.draw.rect(self.screen, BUTTON_HOVER if hovered else BUTTON, button.rect, border_radius=6)
-            self.text(button.text(), self.font_bold, TEXT, button.rect.center, center=True)
+            enabled = button.is_enabled()
+            hovered = enabled and button.rect.collidepoint(mouse_pos)
+            if not enabled:
+                fill, ink = BUTTON_DISABLED, DISABLED_TEXT
+            else:
+                normal, hover = button.color or (BUTTON, BUTTON_HOVER)
+                fill, ink = (hover if hovered else normal), TEXT
+            pygame.draw.rect(self.screen, fill, button.rect, border_radius=6)
+            self.text(button.text(), self.font_bold, ink, button.rect.center, center=True)
 
-    def draw_panel_background(self, title="Chess Agent"):
-        pygame.draw.rect(self.screen, PANEL, (BOARD_SIZE, 0, PANEL_WIDTH, BOARD_SIZE))
-        self.text(title, self.font_title, TEXT, (PANEL_X, 10))
+    #Colour-choice tiles: the selected one is bright with a green border, the rest are dimmed.
+    def draw_tiles(self, tiles, selected_key, mouse_pos):
+        for tile in tiles:
+            self.screen.blit(self.choice_images[tile.key], tile.rect)
+            if tile.key != selected_key:
+                dim = pygame.Surface(tile.rect.size, pygame.SRCALPHA)
+                dim.fill((0, 0, 0, 50 if tile.rect.collidepoint(mouse_pos) else 130))
+                self.screen.blit(dim, tile.rect)
+            if tile.key == selected_key:
+                pygame.draw.rect(self.screen, ACCENT, tile.rect.inflate(6, 6), width=3, border_radius=4)
+            else:
+                pygame.draw.rect(self.screen, BUTTON, tile.rect.inflate(6, 6), width=1, border_radius=4)
+            caption = {"white": "White", "random": "Random", "black": "Black"}[tile.key]
+            self.text(caption, self.font_small, TEXT if tile.key == selected_key else MUTED,
+                        (tile.rect.centerx, tile.rect.bottom + 12), center=True)
 
-    """def draw_status(self, headline, detail, thinking, think_phase, top=284):
-    #   Status box; shows a sliding bar while an agent is thinking.
+    ##   Status box; shows a sliding bar while an agent is thinking.
+    def draw_status(self, headline, detail, thinking, think_phase, top=284):
         box = pygame.Rect(PANEL_X, top, PANEL_INNER, 62)
         pygame.draw.rect(self.screen, BACKGROUND, box, border_radius=6)
         self.text(headline, self.font_bold, ACCENT if thinking else TEXT, (box.x + 10, box.y + 8))
         self.text(detail, self.font, MUTED, (box.x + 10, box.y + 30))
-        if thinking:
-            bar = pygame.Rect(box.x + 10, box.bottom - 9, box.w - 20, 4)
-            pygame.draw.rect(self.screen, BUTTON, bar, border_radius=2)
-            t = think_phase % 2
-            slider = pygame.Rect(bar.x + int((t if t <= 1 else 2 - t) * (bar.w - 60)), bar.y, 60, 4)
-            pygame.draw.rect(self.screen, ACCENT, slider, border_radius=2)"""
 
+    @staticmethod
+    def move_list_area():
+        return pygame.Rect(PANEL_X, MOVES_TOP + 22, PANEL_INNER, MOVES_BOTTOM - MOVES_TOP - 22)
+
+    @classmethod
+    def visible_rows(cls):
+        return max(1, (cls.move_list_area().h - 8) // MOVE_ROW_HEIGHT)
 
     #Two-column move list; the displayed move is highlighted.
-    def draw_move_list(self, san_moves, shown_ply, top=358):
-        self.text("Moves", self.font_bold, MUTED, (PANEL_X, top))
-        area = pygame.Rect(PANEL_X, top + 24, PANEL_INNER, BOARD_SIZE - top - 34)
+    def draw_move_list(self, san_moves, shown_ply, start_row):
+        self.text("Moves", self.font_bold, MUTED, (PANEL_X, MOVES_TOP))
+        area = self.move_list_area()
         pygame.draw.rect(self.screen, BACKGROUND, area, border_radius=6)
-        row_height = 20
-        visible = area.h // row_height
+        visible = self.visible_rows()
         rows = (len(san_moves) + 1) // 2
-        target = max(0, (shown_ply - 1) // 2)
-        start = max(0, min(target - visible + 1, rows - visible)) if rows > visible else 0
-        for row in range(start, min(rows, start + visible)):
-            y = area.y + (row - start) * row_height + 2
+        for row in range(start_row, min(rows, start_row + visible)):
+            y = area.y + 6 + (row - start_row) * MOVE_ROW_HEIGHT
             self.text(f"{row + 1}.", self.font, MUTED, (area.x + 8, y))
             for column in (0, 1):
                 ply = row * 2 + column
                 if ply < len(san_moves):
                     x = area.x + 50 + column * 130
                     if ply + 1 == shown_ply:
-                        pygame.draw.rect(self.screen, BUTTON, (x - 4, y - 1, 90, row_height - 1), border_radius=4)
+                        pygame.draw.rect(self.screen, BUTTON, (x - 4, y - 2, 90, MOVE_ROW_HEIGHT - 1), border_radius=4)
                     self.text(san_moves[ply], self.font_bold, TEXT, (x, y))
+        if rows > visible:                              # scroll bar
+            track = pygame.Rect(area.right - 8, area.y + 4, 4, area.h - 8)
+            pygame.draw.rect(self.screen, BUTTON, track, border_radius=2)
+            thumb_h = max(20, int(track.h * visible / rows))
+            thumb_y = track.y + int((track.h - thumb_h) * start_row / (rows - visible))
+            pygame.draw.rect(self.screen, MUTED, (track.x, thumb_y, track.w, thumb_h), border_radius=2)
