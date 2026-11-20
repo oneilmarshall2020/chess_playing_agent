@@ -1,0 +1,6 @@
+Match: Aggressive vs Defensive (10 games)
+
+  Aggressive:  7.0 pts   +7 =0 -3   (as White +4 =0 -1, as Black +3 =0 -2)
+   Defensive:  3.0 pts   +3 =0 -7   (as White +2 =0 -3, as Black +1 =0 -4)
+
+Endings: checkmate x10

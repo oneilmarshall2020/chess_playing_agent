@@ -1,0 +1,24 @@
+Defensive vs Greedy: 4 games, logging to /Users/oneilmarshall/Desktop/CS Year 3/Semester 1/COMP3220/Assignments/Assignment 3/chess_agent/logs/20261120_024001_defensive_vs_greedy
+  game  1: Defensive (W) vs Greedy (B), Italian Game                 1-0  checkmate, 25 plies, 13s
+  game  2: Greedy (W) vs Defensive (B), Italian Game                 0-1  checkmate, 18 plies, 5s
+  game  3: Defensive (W) vs Greedy (B), Queen's Gambit Declined      1-0  checkmate, 31 plies, 18s
+  game  4: Greedy (W) vs Defensive (B), Queen's Gambit Declined      0-1  checkmate, 34 plies, 20s
+
+Match: Defensive vs Greedy (4 games)
+
+   Defensive:  4.0 pts   +4 =0 -0   (as White +2 =0 -0, as Black +2 =0 -0)
+      Greedy:  0.0 pts   +0 =0 -4   (as White +0 =0 -2, as Black +0 =0 -2)
+
+Endings: checkmate x4
+Defensive vs Stockfish (skill 0): 4 games, logging to /Users/oneilmarshall/Desktop/CS Year 3/Semester 1/COMP3220/Assignments/Assignment 3/chess_agent/logs/20261120_024058_defensive_vs_stockfish__skill_0
+  game  1: Defensive (W) vs Stockfish (skill 0) (B), Italian Game                 0-1  checkmate, 76 plies, 52s
+  game  2: Stockfish (skill 0) (W) vs Defensive (B), Italian Game                 0-1  checkmate, 64 plies, 60s
+  game  3: Defensive (W) vs Stockfish (skill 0) (B), Queen's Gambit Declined  1/2-1/2  threefold_repetition, 62 plies, 56s
+  game  4: Stockfish (skill 0) (W) vs Defensive (B), Queen's Gambit Declined  1/2-1/2  threefold_repetition, 115 plies, 75s
+
+Match: Defensive vs Stockfish (skill 0) (4 games)
+
+   Defensive:  2.0 pts   +1 =2 -1   (as White +0 =1 -1, as Black +1 =1 -0)
+Stockfish (skill 0):  2.0 pts   +1 =2 -1   (as White +0 =1 -1, as Black +1 =1 -0)
+
+Endings: checkmate x2, threefold_repetition x2

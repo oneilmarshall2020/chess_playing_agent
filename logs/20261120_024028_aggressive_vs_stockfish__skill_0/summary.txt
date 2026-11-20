@@ -1,0 +1,6 @@
+Match: Aggressive vs Stockfish (skill 0) (4 games)
+
+  Aggressive:  2.5 pts   +2 =1 -1   (as White +1 =1 -0, as Black +1 =0 -1)
+Stockfish (skill 0):  1.5 pts   +1 =1 -2   (as White +1 =0 -1, as Black +0 =1 -1)
+
+Endings: checkmate x3, threefold_repetition x1

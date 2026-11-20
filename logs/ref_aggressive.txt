@@ -1,0 +1,24 @@
+Aggressive vs Greedy: 4 games, logging to /Users/oneilmarshall/Desktop/CS Year 3/Semester 1/COMP3220/Assignments/Assignment 3/chess_agent/logs/20261120_024001_aggressive_vs_greedy
+  game  1: Aggressive (W) vs Greedy (B), Italian Game                 1-0  checkmate, 15 plies, 3s
+  game  2: Greedy (W) vs Aggressive (B), Italian Game                 0-1  checkmate, 34 plies, 8s
+  game  3: Aggressive (W) vs Greedy (B), Queen's Gambit Declined      1-0  checkmate, 33 plies, 11s
+  game  4: Greedy (W) vs Aggressive (B), Queen's Gambit Declined      0-1  checkmate, 22 plies, 4s
+
+Match: Aggressive vs Greedy (4 games)
+
+  Aggressive:  4.0 pts   +4 =0 -0   (as White +2 =0 -0, as Black +2 =0 -0)
+      Greedy:  0.0 pts   +0 =0 -4   (as White +0 =0 -2, as Black +0 =0 -2)
+
+Endings: checkmate x4
+Aggressive vs Stockfish (skill 0): 4 games, logging to /Users/oneilmarshall/Desktop/CS Year 3/Semester 1/COMP3220/Assignments/Assignment 3/chess_agent/logs/20261120_024028_aggressive_vs_stockfish__skill_0
+  game  1: Aggressive (W) vs Stockfish (skill 0) (B), Italian Game             1/2-1/2  threefold_repetition, 83 plies, 47s
+  game  2: Stockfish (skill 0) (W) vs Aggressive (B), Italian Game                 1-0  checkmate, 79 plies, 60s
+  game  3: Aggressive (W) vs Stockfish (skill 0) (B), Queen's Gambit Declined      1-0  checkmate, 65 plies, 34s
+  game  4: Stockfish (skill 0) (W) vs Aggressive (B), Queen's Gambit Declined      0-1  checkmate, 116 plies, 110s
+
+Match: Aggressive vs Stockfish (skill 0) (4 games)
+
+  Aggressive:  2.5 pts   +2 =1 -1   (as White +1 =1 -0, as Black +1 =0 -1)
+Stockfish (skill 0):  1.5 pts   +1 =1 -2   (as White +1 =0 -1, as Black +0 =1 -1)
+
+Endings: checkmate x3, threefold_repetition x1

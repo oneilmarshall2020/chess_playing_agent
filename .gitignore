@@ -1,3 +1,25 @@
+# Virtual environment (recreate with: python3 -m venv venv && pip install -r requirements.txt)
 venv/
+.venv/
+env/
+
+# Python build and cache files
 __pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# OS and editor clutter
 .DS_Store
+Thumbs.db
+.idea/
+*.swp
+
+# Secrets / local config (none used, but never commit them)
+.env
+
+# Note: tests/ and logs/ ARE committed. The tests prove the search is correct,
+# and logs/ holds the match games and results the match report is based on.
+Chess_Playing_AI_COMP3220_Assignment_PAIRS.pdf

@@ -1,0 +1,6 @@
+Match: Defensive vs Stockfish (skill 0) (4 games)
+
+   Defensive:  2.0 pts   +1 =2 -1   (as White +0 =1 -1, as Black +1 =1 -0)
+Stockfish (skill 0):  2.0 pts   +1 =2 -1   (as White +0 =1 -1, as Black +1 =1 -0)
+
+Endings: checkmate x2, threefold_repetition x2

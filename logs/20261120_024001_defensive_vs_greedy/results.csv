@@ -1,0 +1,5 @@
+game,white,black,opening,result,winner,termination,plies,white_avg_seconds,black_avg_seconds,white_avg_nodes,black_avg_nodes,moves
+1,Defensive,Greedy,Italian Game,1-0,Defensive,checkmate,25,1.285,0.001,3694,,e4 e5 Nf3 Nc6 Bc4 Bc5 Nc3 Bxf2+ Kxf2 Nf6 Kg1 Nxe4 Nxe4 Na5 Bb5 Qf6 Nxf6+ gxf6 d4 exd4 Qe1+ Kf8 Bh6+ Kg8 Qe8#
+2,Greedy,Defensive,Italian Game,0-1,Defensive,checkmate,18,0.001,0.914,,2717,e4 e5 Nf3 Nc6 Bc4 Bc5 Bxf7+ Kxf7 Nxe5+ Nxe5 f4 Ng6 h3 Qh4+ g3 Qxg3+ Kf1 Qf2#
+3,Defensive,Greedy,Queen's Gambit Declined,1-0,Defensive,checkmate,31,1.389,0.001,4254,,d4 d5 c4 e6 Nc3 Nf6 Nf3 dxc4 e4 Nxe4 Nxe4 Qxd4 Nxd4 Rg8 Bxc4 Nc6 Nxc6 bxc6 O-O Rb8 Qa4 Rxb2 Bxb2 g6 Nf6+ Kd8 Nxg8 c5 Bf6+ Be7 Bxe7#
+4,Greedy,Defensive,Queen's Gambit Declined,0-1,Defensive,checkmate,34,0.001,1.411,,4149,d4 d5 c4 e6 Nc3 Nf6 Nxd5 exd5 cxd5 Be7 Nh3 O-O Qa4 Bxh3 gxh3 Qxd5 Qxa7 Rxa7 Bh6 Qxh1 Bxg7 Bb4+ Kd1 Qxf1+ Kc2 Qxa1 Bxf8 Bxf8 e4 Nxe4 b4 Qc3+ Kb1 Nd2#

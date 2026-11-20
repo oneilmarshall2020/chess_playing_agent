@@ -13,50 +13,90 @@ import pygame
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(BASE_DIR))      
 
-from board_view import (BACKGROUND, BOARD_SIZE, MUTED, PANEL_INNER, PANEL_X, TEXT,
-                 Button, Renderer)
+# Package-style imports work both ways: `python -m frontend.app` and `python frontend/app.py`
+# (line above puts the project root on sys.path).
+from frontend.board_view import (BACKGROUND, BOARD_SIZE, CONTROLS_Y, MUTED, PANEL_INNER, PANEL_X, RED, RED_HOVER, TEXT, Button, BoardView, TILE_SIZE, Tile)
+from backend.base import DEFAULT_DEPTH, MAX_DEPTH, MIN_DEPTH
+from frontend.eval_bar import EvalService, move_symbol, white_share
 
-MIN_DEPTH, MAX_DEPTH, DEFAULT_DEPTH = 1, 4, 3
+# (module, class) for each agent. Index 0 = defensive, 1 = aggressive.
+AGENT_MODULES = [("agent_d", "DefensiveAgent"),
+               ("agent_a", "AggressiveAgent")]
 
-# (module, class) for each agent. Index 0 = yours (defensive), 1 = partner's.
-AGENT_TYPES = [("backend.agents.agent_d", "DefensiveAgent"),
-               ("backend.agents.agent_a", "AggressiveAgent")]
+AGENT_NAMES = [cls.replace("Agent", "") for _, cls in AGENT_MODULES]
+PIECE_VALUES = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
+DRAW_ACCEPT_DEFICIT = 8
 
+MENU_TITLE = "COMP3220 Chess AI"
+MENU_SUBTITLE = "Minimax with Alpha-Beta Pruning"
+MENU_PLAY_AS = "Play as"
+MENU_AVA_NOTE = "Colours are random for the first game, then swap automatically"
+MENU_DEPTH_LABEL = "Search depth (plies)"
+PANEL_TITLE = "Chess Agents"        # title shown above the board panel during a game
+
+MENU_WIDTH = 380                    # preferred width of the menu column (shrinks on a narrow window)
+MENU_MARGIN = 16 
 
 #----------------------------------------------------------------------------------Agents
+
+#Stand-in used only if an agent module can't be imported (keeps the GUI testable).
 class PlaceholderAgent:
-    """Stand-in used only if an agent module can't be imported (keeps the GUI testable)."""
 
     def __init__(self, name):
         self.name = name
         self.depth = 2
+
 
     def play(self, board):
         time.sleep(0.8)
         moves = list(board.legal_moves)
         return random.choice([m for m in moves if board.is_capture(m)] or moves)
 
+
     def abort(self):
         pass
+
 
 #Create a FRESH instance of agent ``index`` (placeholder if import fails).
 #A fresh instance per game means an aborted search from a previous game can never interfere with the new one through shared state.
 def load_agent(index):
-    module_name, class_name = AGENT_TYPES[index]
-    try:
-        return getattr(importlib.import_module(module_name), class_name)()
-    except Exception as error:
-        print(f"[app] could not load {module_name}.{class_name} ({error}); using placeholder")
-        return PlaceholderAgent(class_name.replace("Agent", ""))
+    if not 0 <= index < len(AGENT_MODULES):
+        raise IndexError(f"Unknown agent index: {index}")
 
+    module_name, class_name = AGENT_MODULES[index]
+    try:
+        module = importlib.import_module(f"backend.agents.{module_name}")
+        agent_class = getattr(module, class_name)
+        return agent_class()
+    except Exception as exc:
+        print(f"Could not load {class_name}: {exc}")
+        return PlaceholderAgent(class_name.replace("Agent", ""))
 
 def get_depth(agent):
     return getattr(agent, "depth", DEFAULT_DEPTH)
 
-
+#Clamp and apply the search depth
 def set_depth(agent, depth):
     agent.depth = max(MIN_DEPTH, min(MAX_DEPTH, depth))
 
+#Decide whether ``agent`` accepts a draw offer in ``board`` (the human offered on their turn).
+# If the agent defines ``accept_draw(board) -> bool`` that is used, so each strategy can
+# decide in its own style (e.g. a defensive agent accepting more readily than an aggressive
+# one). Otherwise the default is a material rule: accept only when behind by
+# DRAW_ACCEPT_DEFICIT points or more.
+
+def agent_accepts_draw(agent, board):
+    
+    custom = getattr(agent, "accept_draw", None)
+    if callable(custom):
+        try:
+            return bool(custom(board.copy()))
+        except Exception as error:
+            print(f"[{agent.name}] accept_draw error: {error}; using default rule")
+    agent_color = not board.turn                        # it is the human's turn when they offer
+    balance = sum((PIECE_VALUES[p.piece_type] if p.color == agent_color else -PIECE_VALUES[p.piece_type])
+                  for p in board.piece_map().values())
+    return balance <= -DRAW_ACCEPT_DEFICIT
 
 #---------------------------------------------------------------------------------Game
 
@@ -68,11 +108,18 @@ class Game:
         self.flipped = flipped
         self.board = chess.Board()
         self.san_moves = []
+        self.fens = [self.board.fen()]  # position after each ply (index 0 = start), for the eval bar
 
         self.auto = True                # agents move on their own
         self.step_requested = False     # "Step" = let the side to move play once
         self.view_ply = None            # None = live position, else reviewing history
         self.status_message = ""
+        self.scroll_row = None          # move list: None = follow the latest move, else first visible row
+
+        self.draw_agreed = False
+        self.resigned = None            # colour that resigned (None = nobody)
+        self.resign_confirm_until = 0.0  # Resign needs a second click within this time
+        self.last_offer_ply = -1
 
         self.selected = None            # human UI state
         self.dragging = False
@@ -80,6 +127,7 @@ class Game:
 
         self.thinking = False
         self.thinking_agent = None
+        self.worker = None
         self.think_start = 0.0
         self.last_think_time = None
         self.results = queue.Queue()    # finished searches arrive here
@@ -93,7 +141,7 @@ class Game:
         return self.board.outcome(claim_draw=True)
 
     def is_over(self):
-        return self.outcome() is not None
+        return self.resigned is not None or self.draw_agreed or self.outcome() is not None
 
     def can_human_move(self):
         return (self.view_ply is None and not self.is_over() and not self.thinking
@@ -122,11 +170,21 @@ class Game:
         return [(m.to_square, self.board.is_capture(m))
                 for m in self.board.legal_moves if m.from_square == self.selected]
 
+    def matchup_text(self):
+        def name(color):
+            agent = self.seats[color]
+            return "You" if agent is None else agent.name
+        return f"{name(chess.WHITE)} (White) vs {name(chess.BLACK)} (Black)"
+
     # ------------------------------------------------------------------- moves
+    
+    #Play a legal move and record it in the move list.
     def push_move(self, move):
         self.san_moves.append(self.board.san(move))
         self.board.push(move)
+        self.fens.append(self.board.fen())
         self.selected, self.promotion_move, self.view_ply, self.status_message = None, None, None, ""
+        self.scroll_row = None
 
     #Play from -> to if legal (opens the promotion picker if needed).
     def try_human_move(self, from_square, to_square):
@@ -140,8 +198,8 @@ class Game:
             self.push_move(matches[0])
         return True
 
+    #Pick up a piece, or move the selected piece onto square.
     def click_board(self, square):
-        """Pick up a piece, or move the selected piece onto ``square``."""
         if square is None:
             return
         if self.selected is not None and square != self.selected and self.try_human_move(self.selected, square):
@@ -152,8 +210,8 @@ class Game:
         else:
             self.selected = None
 
+    #Mouse released: drop a dragged piece onto square.
     def release(self, square):
-        """Mouse released: drop a dragged piece onto ``square``."""
         self.dragging = False
         if square is not None and self.selected is not None and square != self.selected:
             self.try_human_move(self.selected, square)
@@ -162,9 +220,58 @@ class Game:
         from_square, to_square = self.promotion_move
         self.push_move(chess.Move(from_square, to_square, promotion=piece_type))
 
+    #------------------------------------------------------------- Resignation
+
+    #Colour the human plays, or None in agent-vs-agent games.
+    def human_color(self):
+        for color, agent in self.seats.items():
+            if agent is None:
+                return color
+        return None
+
+    def can_resign(self):
+        return self.human_color() is not None and not self.is_over()
+
+    def resign_label(self):
+        return "Confirm?" if time.time() < self.resign_confirm_until else "Resign"
+
+    #First click arms the button ("Confirm?"); a second click within 3 s resigns for the human.
+    def request_resign(self):
+        if not self.can_resign():
+            return
+        if time.time() >= self.resign_confirm_until:
+            self.resign_confirm_until = time.time() + 3.0
+            return
+        self._stop_agent()                      # stop an agent that is still thinking
+        self.token += 1
+        self.thinking = False
+        self.resigned = self.human_color()
+        self.selected, self.dragging, self.promotion_move = None, False, None
+
+    #------------------------------------------------------------- Draw offers
+
+    #Human may offer a draw on their own turn, once per move.
+    def can_offer_draw(self):
+        return (self.can_human_move() and self.promotion_move is None and len(self.san_moves) != self.last_offer_ply)
+
+
+    #Human offers a draw, the opposing agent decides whether to accept.
+    def offer_draw(self):
+        if not self.can_offer_draw():
+            return
+        agent = self.agent_for(not self.board.turn)
+        self.last_offer_ply = len(self.san_moves)
+        self.selected, self.dragging = None, False
+        if agent_accepts_draw(agent, self.board):
+            self.draw_agreed = True
+            self.status_message = ""
+        else:
+            self.status_message = f"{agent.name} declined the draw"
+
     # ------------------------------------------------------------ Agent search
+    
+    #Run agent.play() in a worker thread so the window stays responsive.
     def start_search(self, agent):
-        """Run agent.play() in a worker thread so the window stays responsive."""
         self.thinking, self.thinking_agent, self.think_start = True, agent, time.time()
         token, snapshot, started = self.token, self.board.copy(), self.think_start
 
@@ -176,19 +283,19 @@ class Game:
                     print(f"[{agent.name}] error: {error}")
                 move = None
             self.results.put((token, move, time.time() - started))
+        self.worker = threading.Thread(target=work, daemon=True)
+        self.worker.start()
 
-        threading.Thread(target=work, daemon=True).start()
-
-    def abort_search(self):
-        """Cancel the running search and switch Auto off."""
-        self._stop_agent()
-        self.token += 1
-        self.thinking, self.auto, self.step_requested = False, False, False
-        self.status_message = "Aborted - press Auto or Step to continue"
-
+    #Ask current agent that is searching to give up.
     def _stop_agent(self):
-        if self.thinking and self.thinking_agent is not None:
-            self.thinking_agent.abort()
+        agent = self.thinking_agent
+        if agent is None:
+            return
+        for name in ("abort", "stop"):          # engine agents use abort(); older ones stop()
+            method = getattr(agent, name, None)
+            if callable(method):
+                method()
+                return
 
     def close(self):
         """Stop everything (called when leaving the game screen)."""
@@ -208,6 +315,8 @@ class Game:
                     self.auto, self.status_message = False, "Agent returned no legal move"
         if self.thinking or self.view_ply is not None or self.is_over():
             return
+        if self.worker is not None and self.worker.is_alive():   # let an aborted search finish unwinding
+            return
         agent = self.agent_for(self.board.turn)
         if agent and (self.auto or self.step_requested):
             self.start_search(agent)
@@ -218,19 +327,44 @@ class Game:
         self.auto = not self.auto
         self.status_message = ""
 
+    #Allows the agent-to-move by exactly one move.
     def step_once(self):
         self.view_ply = None
         if not self.thinking and not self.is_over():
             self.step_requested = True
 
+    #Review history: -1 back one ply, +1 forward (returns to live at the end).
     def navigate(self, delta):
-        """Review history: -1 back one ply, +1 forward (returns to live at the end)."""
         new_ply = max(0, min(len(self.san_moves), self.shown_ply() + delta))
         self.view_ply = None if new_ply == len(self.san_moves) else new_ply
         self.selected, self.promotion_move, self.dragging = None, None, False
+        self.scroll_row = None
 
+    #------------------------------------------------------------------------------- Move 1list scroll
+    
+    #First row of the move list to draw (follows the shown move unless the user scrolled).
+    def move_list_start(self, visible):
+        
+        rows = (len(self.san_moves) + 1) // 2
+        max_start = max(0, rows - visible)
+        if self.scroll_row is not None:
+            return max(0, min(max_start, self.scroll_row))
+        target = max(0, (self.shown_ply() - 1) // 2)
+        return max(0, min(target - visible + 1, max_start))
+
+    #Scroll the move list by delta_rows (negative = up).
+    def scroll_moves(self, delta_rows, visible):
+        rows = (len(self.san_moves) + 1) // 2
+        start = self.move_list_start(visible) + delta_rows
+        self.scroll_row = max(0, min(max(0, rows - visible), start))
+
+    #(headline, detail) for the status box.
     def status_lines(self):
-        """(headline, detail) for the status box."""
+        if self.resigned is not None:
+            white_wins = self.resigned == chess.BLACK
+            return ("White wins" if white_wins else "Black wins") + " - Resignation", "1-0" if white_wins else "0-1"
+        if self.draw_agreed:
+            return "Draw - Agreement", "1/2-1/2"
         outcome = self.outcome()
         if outcome:
             winner = "Draw" if outcome.winner is None else ("White wins" if outcome.winner else "Black wins")
@@ -244,7 +378,7 @@ class Game:
                     f"{side} - depth {get_depth(self.thinking_agent)} - {time.time() - self.think_start:.1f}s")
         agent = self.agent_for(self.board.turn)
         if agent is None:
-            return "Your move", f"{side} to move"
+            return self.status_message or "Your move", f"{side} to move"
         detail = (f"Last move took {self.last_think_time:.1f}s" if self.last_think_time is not None
                   else f"{side} to move")
         return self.status_message or f"{agent.name} to move ({side})", detail
@@ -256,7 +390,7 @@ class App:
     #Window, menu screen, game screen and the main loop.
 
     def __init__(self):
-        self.gfx = Renderer()
+        self.view = BoardView()
         self.clock = pygame.time.Clock()
         self.mouse_pos = (0, 0)
         self.running = True
@@ -266,16 +400,25 @@ class App:
         self.agents = []
 
         # Menu choices (remembered between games)
-        self.human_white = True
         self.depths = [DEFAULT_DEPTH, DEFAULT_DEPTH]
-        self.white_agent = 0            # agent-vs-agent: which agent plays White
-        self.mode = "hva"
-        self.opponent = 0
+        self.mode = "hva"               # "hva" = human vs agent, "ava" = agent vs agent
+        self.opponent = 0               # hva: index of the agent the human plays against
 
-        self.menu_buttons = self._build_menu_buttons()
+        self.colour_choice = "white"    # hva: "white", "black" or "random"
+        self.ava_white = None           # ava: index of the agent playing White (None = no game yet)
+
+        # Optional Stockfish eval bar (display only -- the agents never use it). Off by default.
+        self.eval_service = EvalService()
+        self.show_eval = False
+
+        self.menu_buttons = []
+        self.tiles = []
+        self._build_menu()
         self.game_buttons = []
 
     # -------------------------------------------------------------- navigation
+    
+    #Create fresh agents and a new Game, then switch to the game screen.
     def start_game(self, mode, opponent=0):
         """Create fresh agents and a new Game, then switch to the game screen."""
         if self.game:
@@ -286,14 +429,17 @@ class App:
             set_depth(agent, depth)
 
         if mode == "hva":
-            human = chess.WHITE if self.human_white else chess.BLACK
-            seats = {human: None, not human: self.agents[opponent]}
-            self.game = Game(seats, flipped=not self.human_white)
+            human_white = {"white": True, "black": False}.get(self.colour_choice, random.random() < 0.5)
+            human = chess.WHITE if human_white else chess.BLACK
+            self.game = Game({human: None, not human: self.agents[opponent]}, flipped=not human_white)
         else:
-            w = self.white_agent
+            # first game: random colours; every later game: the agents swap colours
+            self.ava_white = random.choice([0, 1]) if self.ava_white is None else 1 - self.ava_white
+            w = self.ava_white
             self.game = Game({chess.WHITE: self.agents[w], chess.BLACK: self.agents[1 - w]})
         self.game_buttons = self._build_game_buttons()
         self.screen_name = "game"
+            
 
     def restart(self):
         self.start_game(self.mode, self.opponent)
@@ -307,63 +453,143 @@ class App:
     def quit(self):
         self.running = False
 
+    #Turn the Stockfish eval bar on/off (menu button or the E key during a game).
+    def toggle_eval(self):
+        if self.eval_service.available:
+            self.show_eval = not self.show_eval
+            if self.show_eval:
+                self.eval_service.start()
+
+    def eval_label(self):
+        if not self.eval_service.available:
+            return "Eval bar: no Stockfish"
+        return f"Eval bar: {'ON' if self.show_eval else 'OFF'}  (E)"
+
+    #Cycle the board colour theme (menu button or the T key during a game).
+    def next_theme(self):
+        self.view.next_theme()
+
+    def theme_label(self):
+        return f"Theme: {self.view.theme['name']}  (T)"
+
     # ----------------------------------------------------------------- buttons
-    def _build_menu_buttons(self):
-        cx = (self.gfx.screen.get_width() - 380) // 2
-        names = [load_name for load_name in (t[1].replace("Agent", "") for t in AGENT_TYPES)]
+    def _menu_flow(self, scale, y0):
+        v = self.view
+        width = v.width                               # logical size (HiDPI-safe)
+        col_w = min(MENU_WIDTH, width - 2 * MENU_MARGIN)
+        x, mid = (width - col_w) // 2, width // 2
+        gap = max(3, round(8 * scale))                  # between related items
+        section = max(6, round(22 * scale))             # between groups
+        btn_h = max(26, round(38 * scale))
+        row_h = max(22, round(28 * scale))
+        buttons, tiles, texts = [], [], []
+        y = y0
 
-        def toggle_colour():
-            self.human_white = not self.human_white
+        def line_height(font):
+            return font.size("Ag")[1]
 
-        def swap_white():
-            self.white_agent = 1 - self.white_agent
+        #Add a text line whose top edge is at the current y, then move down by its height.
+        def label(text, font, color, anchor="midtop", at_x=None):
+            nonlocal y
+            texts.append((text, font, color, (at_x if at_x is not None else mid, y), anchor))
+            y += line_height(font)
 
-        def depth(i, d):
+        # title + subtitle (the title font shrinks if the text is wider than the window)
+        label(MENU_TITLE, v.fit_font(MENU_TITLE, 44, width - 2 * MENU_MARGIN), TEXT)
+        y += gap
+        label(MENU_SUBTITLE, v.fit_font(MENU_SUBTITLE, 16, width - 2 * MENU_MARGIN, bold=False), MUTED)
+        y += section
+
+        # human vs agent
+        for i in (0, 1):
+            buttons.append(Button((x, y, col_w, btn_h), f"Play vs {AGENT_NAMES[i]} agent",
+                                    lambda i=i: self.start_game("hva", i)))
+            y += btn_h + gap
+        y += section - gap
+        label(MENU_PLAY_AS, v.font_bold, MUTED, "topleft", at_x=x)
+        y += gap + 3                                    # +3: room for the tile's selection border
+        tile_gap = max(16, (col_w - 3 * TILE_SIZE) // 4)
+        left = x + (col_w - (3 * TILE_SIZE + 2 * tile_gap)) // 2
+        for i, key in enumerate(("white", "random", "black")):
+            tiles.append(Tile((left + i * (TILE_SIZE + tile_gap), y, TILE_SIZE, TILE_SIZE), key,
+                                lambda key=key: setattr(self, "colour_choice", key)))
+        y += TILE_SIZE + line_height(v.font_small) + 10         # tile + its caption
+        y += section
+
+        # agent vs agent
+        buttons.append(Button((x, y, col_w, btn_h), "Agent vs Agent", lambda: self.start_game("ava")))
+        y += btn_h + gap
+        for line in v.wrap_text(MENU_AVA_NOTE, v.font_small, col_w):   # long notes wrap instead of running off
+            label(line, v.font_small, MUTED)
+        y += section
+
+        # search depth: label, value and - / + all share each row's vertical centre
+        label(MENU_DEPTH_LABEL, v.font_bold, MUTED, "topleft", at_x=x)
+        y += gap
+
+    
+        def change_depth(i, d):
             self.depths[i] = max(MIN_DEPTH, min(MAX_DEPTH, self.depths[i] + d))
 
-        buttons = [
-            Button((cx, 150, 380, 38), f"Play vs {names[0]} agent", lambda: self.start_game("hva", 0)),
-            Button((cx, 196, 380, 38), f"Play vs {names[1]} agent", lambda: self.start_game("hva", 1)),
-            Button((cx, 242, 380, 34), lambda: "You play: " + ("White" if self.human_white else "Black"),
-                   toggle_colour),
-            Button((cx, 296, 380, 38), "Agent vs Agent", lambda: self.start_game("ava")),
-            Button((cx, 342, 380, 34), lambda: f"White: {names[self.white_agent]}  (click to swap)", swap_white),
-        ]
         for i in (0, 1):
-            y = 396 + i * 38
-            buttons.append(Button((cx + 250, y, 30, 28), "-", lambda i=i: depth(i, -1)))
-            buttons.append(Button((cx + 350, y, 30, 28), "+", lambda i=i: depth(i, +1)))
-        buttons.append(Button((cx, 480, 380, 34), "Quit", self.quit))
-        self.depth_labels = names
-        self.menu_cx = cx
-        return buttons
+            centre_y = y + row_h // 2
+            texts.append((f"{AGENT_NAMES[i]} agent", v.font, TEXT, (x, centre_y), "midleft"))
+            buttons.append(Button((x + col_w - 130, y, 30, row_h), "-", lambda i=i: change_depth(i, -1)))
+            texts.append((lambda i=i: str(self.depths[i]), v.font_bold, TEXT, (x + col_w - 65, centre_y), "center"))
+            buttons.append(Button((x + col_w - 30, y, 30, row_h), "+", lambda i=i: change_depth(i, +1)))
+            y += row_h + gap
+        y += section - gap
+
+        quit_h = max(26, round(34 * scale))
+        half = (col_w - gap) // 2                       # theme | eval bar, side by side
+        buttons.append(Button((x, y, half, quit_h), self.theme_label, self.next_theme))
+        buttons.append(Button((x + col_w - half, y, half, quit_h), self.eval_label, self.toggle_eval,
+                              enabled=lambda: self.eval_service.available))
+        y += quit_h + gap
+        buttons.append(Button((x, y, col_w, quit_h), "Quit", self.quit))
+        y += quit_h
+        return y, buttons, tiles, texts
+
+    def _build_menu(self):
+        height = self.view.height
+        scale = 1.0
+        while True:
+            total, *_ = self._menu_flow(scale, 0)
+            if total <= height - 2 * MENU_MARGIN or scale <= 0.2:
+                break
+            scale -= 0.1   # (windows shorter than roughly 430 px are too small for the full menu)
+        top = max(MENU_MARGIN, (height - total) // 2)
+        _, self.menu_buttons, self.tiles, self.menu_texts = self._menu_flow(scale, top)
+
+    def draw_menu(self):
+        v = self.view
+        v.draw_buttons(self.menu_buttons, self.mouse_pos)
+        v.draw_tiles(self.tiles, self.colour_choice, self.mouse_pos)
+        for text, font, color, pos, anchor in self.menu_texts:
+            v.text_at(text() if callable(text) else text, font, color, pos, anchor)
 
     def _build_game_buttons(self):
         g = self.game
-        full, half = PANEL_INNER, (PANEL_INNER - 8) // 2
         third = (PANEL_INNER - 12) // 3
-        x2, x3 = PANEL_X + third + 6, PANEL_X + 2 * (third + 6)
-
-        def change_depth(i, d):
-            set_depth(self.agents[i], get_depth(self.agents[i]) + d)
-
-        buttons = [
-            Button((PANEL_X, 44, half, 34), "Menu", self.go_to_menu),
-            Button((PANEL_X + half + 8, 44, half, 34), "Restart", self.restart),
+        top = [
+            Button((PANEL_X, 66, third, 32), "Menu", self.go_to_menu),
+            Button((PANEL_X + third + 6, 66, third, 32), "Restart", self.restart),
+            Button((PANEL_X + 2 * (third + 6), 66, third, 32), "Draw", g.offer_draw, enabled=g.can_offer_draw),
         ]
-        for i in (0, 1):
-            y = 128 + i * 34
-            buttons.append(Button((PANEL_X + full - 110, y, 30, 26), "-", lambda i=i: change_depth(i, -1)))
-            buttons.append(Button((PANEL_X + full - 30, y, 30, 26), "+", lambda i=i: change_depth(i, +1)))
-        buttons += [
-            Button((PANEL_X, 202, third, 32), "Abort", g.abort_search),
-            Button((x2, 202, third, 32), lambda: "Auto: ON" if g.auto else "Auto: OFF", g.toggle_auto),
-            Button((x3, 202, third, 32), "Step", g.step_once),
-            Button((PANEL_X, 242, half, 32), "<", lambda: g.navigate(-1)),
-            Button((PANEL_X + half + 8, 242, half, 32), ">", lambda: g.navigate(+1)),
-        ]
-        return buttons
-
+        # one line below the move list: Resign (red), Auto, Step, <, >
+        specs = [(76, g.resign_label, g.request_resign, (RED, RED_HOVER), g.can_resign),
+                 (84, lambda: "Auto: ON" if g.auto else "Auto: OFF", g.toggle_auto, None, None),
+                 (64, "Step", g.step_once, None, None),
+                 (42, "<", lambda: g.navigate(-1), None, None),
+                 (42, ">", lambda: g.navigate(+1), None, None)]
+        total = sum(w for w, *_ in specs) + 6 * (len(specs) - 1)
+        x = PANEL_X + (PANEL_INNER - total) // 2
+        controls = []
+        for width, label, action, color, enabled in specs:
+            controls.append(Button((x, CONTROLS_Y, width, 34), label, action, color=color, enabled=enabled))
+            x += width + 6
+        return top + controls
+    
     # ------------------------------------------------------------------ events
     def handle_event(self, event):
         if event.type == pygame.QUIT:
@@ -376,16 +602,16 @@ class App:
         else:
             self._game_event(event)
 
-    def _click_buttons(self, buttons, pos):
+    @staticmethod
+    def _click_buttons(buttons, pos):
         for button in buttons:
-            if button.rect.collidepoint(pos):
+            if button.rect.collidepoint(pos) and button.is_enabled():
                 button.action()
-                return True
-        return False
+                return
 
     def _menu_event(self, event):
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            self._click_buttons(self.menu_buttons, event.pos)
+            self._click_buttons(self.menu_buttons + self.tiles, event.pos)
         elif event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
             self.quit()
 
@@ -400,53 +626,68 @@ class App:
                 g.step_once()
             elif event.key == pygame.K_ESCAPE:
                 self.go_to_menu()
+            elif event.key == pygame.K_e:
+                self.toggle_eval()
+            elif event.key == pygame.K_t:
+                self.next_theme()
+        elif event.type == pygame.MOUSEWHEEL:                       # scroll the move list
+            if self.view.move_list_area().collidepoint(self.mouse_pos):
+                g.scroll_moves(-event.y * 2, self.view.visible_rows())
         elif event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if event.pos[0] >= BOARD_SIZE:
-                self._click_buttons(self.game_buttons, event.pos)      # may leave the game
+                self._click_buttons(self.game_buttons, event.pos)   # may leave the game
             elif g.promotion_move:
-                for piece_type, rect in self.gfx.promotion_rects():
+                for piece_type, rect in self.view.promotion_rects():
                     if rect.collidepoint(event.pos):
                         g.choose_promotion(piece_type)
                         return
-                g.promotion_move = None                                # click elsewhere cancels
+                g.promotion_move = None                             # clicking elsewhere cancels
             elif g.can_human_move():
-                g.click_board(self.gfx.xy_to_square(event.pos, g.flipped))
+                g.click_board(self.view.xy_to_square(event.pos, g.flipped))
         elif event.type == pygame.MOUSEBUTTONUP and event.button == 1 and g.dragging:
-            g.release(self.gfx.xy_to_square(event.pos, g.flipped))
+            g.release(self.view.xy_to_square(event.pos, g.flipped))
 
     # ----------------------------------------------------------------- drawing
-    def draw_menu(self):
-        g, cx = self.gfx, self.menu_cx
-        w = g.screen.get_width()
-        g.text("Chess Lab", g.font_big, TEXT, (w // 2, 70), center=True)
-        g.text("Minimax with Alpha-Beta Pruning", g.font, MUTED, (w // 2, 112), center=True)
-        g.text("Search depth (plies)", g.font_bold, MUTED, (cx, 372 + 0))
-        g.draw_buttons(self.menu_buttons, self.mouse_pos)
-        for i in (0, 1):
-            y = 396 + i * 38
-            g.text(f"{self.depth_labels[i]} agent", g.font, TEXT, (cx, y + 4))
-            g.text(str(self.depths[i]), g.font_bold, TEXT, (cx + 315, y + 14), center=True)
-
     def draw_game(self):
-        g, game = self.gfx, self.game
-        shown = game.shown_board()
-        live = game.view_ply is None
-        promo = game.board.turn if game.promotion_move else None
-        g.draw_board(shown, game.flipped, game.last_move(),
-                     game.selected if live else None,
-                     game.targets() if live else (),
-                     game.selected if (game.dragging and live) else None,
-                     self.mouse_pos, promo)
+        v, g = self.view, self.game
+        live = g.view_ply is None
+        v.draw_board(g.shown_board(), g.flipped, g.last_move(),
+                     g.selected if live else None,
+                     g.targets() if live else (),
+                     g.selected if (g.dragging and live) else None,
+                     self.mouse_pos, 
+                     g.board.turn if g.promotion_move else None)
 
-        g.draw_panel_background()
-        g.draw_buttons(self.game_buttons, self.mouse_pos)
-        for i, agent in enumerate(self.agents):
-            y = 128 + i * 34
-            g.text(f"{agent.name} depth", g.font, MUTED, (PANEL_X, y + 3))
-            g.text(str(get_depth(agent)), g.font_bold, TEXT, (PANEL_X + PANEL_INNER - 55, y + 13), center=True)
-        headline, detail = game.status_lines()
-        g.draw_status(headline, detail, game.thinking, time.time() * 1.2)
-        g.draw_move_list(game.san_moves, game.shown_ply())
+        v.draw_panel_background(PANEL_TITLE, g.matchup_text())
+        v.draw_buttons(self.game_buttons, self.mouse_pos)
+        headline, detail = g.status_lines()
+        moves, eval_text = g.san_moves, None
+        if self.show_eval:
+            moves, eval_text = self._draw_eval(g)
+        v.draw_status(headline, detail, g.thinking, time.time() * 1.2, top = 108, right_text=eval_text)
+        v.draw_move_list(moves, g.shown_ply(), g.move_list_start(v.visible_rows()))
+
+    #Eval bar for the shown position, and the move list annotated with ?! / ? / ??.
+    #Returns (annotated SAN list, evaluation text).
+    def _draw_eval(self, g):
+        shown = g.shown_ply()
+        # evaluate the shown position first, then the one before it, then the rest of the game
+        order = [shown, shown - 1] + list(range(len(g.fens) - 1, -1, -1))
+        self.eval_service.want([g.fens[i] for i in order if 0 <= i < len(g.fens)])
+
+        current = self.eval_service.get(g.fens[shown])
+        self.view.draw_eval_bar(None if current is None else white_share(current.cp), g.flipped)
+
+        annotated = []
+        for ply, san in enumerate(g.san_moves, start=1):
+            before, after = self.eval_service.get(g.fens[ply - 1]), self.eval_service.get(g.fens[ply])
+            mover = chess.WHITE if ply % 2 == 1 else chess.BLACK
+            annotated.append(san + (move_symbol(before, after, mover) if before and after else ""))
+        if current is None:
+            return annotated, "..."
+        if current.text in ("1-0", "0-1", "1/2-1/2"):     # game over: the status box already says so
+            return annotated, None
+        return annotated, current.text
 
     # --------------------------------------------------------------- main loop
     def run(self):
@@ -455,15 +696,16 @@ class App:
                 self.handle_event(event)
             if self.game:
                 self.game.update()
-            self.gfx.screen.fill(BACKGROUND)
+            self.view.screen.fill(BACKGROUND)
             if self.screen_name == "menu":
                 self.draw_menu()
             else:
                 self.draw_game()
-            pygame.display.flip()
+            self.view.flip()
             self.clock.tick(60)
         if self.game:
             self.game.close()
+        self.eval_service.close()
         pygame.quit()
 
 

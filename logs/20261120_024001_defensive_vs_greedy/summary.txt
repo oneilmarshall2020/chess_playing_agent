@@ -1,0 +1,6 @@
+Match: Defensive vs Greedy (4 games)
+
+   Defensive:  4.0 pts   +4 =0 -0   (as White +2 =0 -0, as Black +2 =0 -0)
+      Greedy:  0.0 pts   +0 =0 -4   (as White +0 =0 -2, as Black +0 =0 -2)
+
+Endings: checkmate x4

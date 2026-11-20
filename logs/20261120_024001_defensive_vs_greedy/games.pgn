@@ -1,0 +1,48 @@
+[Event "Agent match"]
+[Site "COMP3220"]
+[Date "2026.11.20"]
+[Round "1"]
+[White "Defensive"]
+[Black "Greedy"]
+[Result "1-0"]
+[Opening "Italian Game"]
+[Termination "checkmate"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 { end of book } 4. Nc3 { score +713, 3338 nodes, 1.53s } 4... Bxf2+ { 0.00s } 5. Kxf2 { score +916, 719 nodes, 0.30s } 5... Nf6 { 0.00s } 6. Kg1 { score +849, 4979 nodes, 1.72s } 6... Nxe4 { 0.00s } 7. Nxe4 { score +958, 3067 nodes, 1.05s } 7... Na5 { 0.00s } 8. Bb5 { score +1209, 4139 nodes, 1.39s } 8... Qf6 { 0.00s } 9. Nxf6+ { score +1940, 2590 nodes, 0.88s } 9... gxf6 { 0.00s } 10. d4 { score +1817, 5002 nodes, 1.78s } 10... exd4 { 0.00s } 11. Qe1+ { score +2110, 3349 nodes, 1.04s } 11... Kf8 { 0.00s } 12. Bh6+ { score +999997, 4528 nodes, 1.62s } 12... Kg8 { 0.00s } 13. Qe8# { score +999999, 5229 nodes, 1.54s } 1-0
+
+[Event "Agent match"]
+[Site "COMP3220"]
+[Date "2026.11.20"]
+[Round "2"]
+[White "Greedy"]
+[Black "Defensive"]
+[Result "0-1"]
+[Opening "Italian Game"]
+[Termination "checkmate"]
+
+1. e4 e5 2. Nf3 Nc6 3. Bc4 Bc5 { end of book } 4. Bxf7+ { 0.00s } 4... Kxf7 { score -801, 565 nodes, 0.24s } 5. Nxe5+ { 0.00s } 5... Nxe5 { score -839, 644 nodes, 0.24s } 6. f4 { 0.00s } 6... Ng6 { score -1027, 3926 nodes, 1.40s } 7. h3 { 0.00s } 7... Qh4+ { score -1253, 3964 nodes, 1.26s } 8. g3 { 0.00s } 8... Qxg3+ { score -1416, 3203 nodes, 0.97s } 9. Kf1 { 0.00s } 9... Qf2# { score -999999, 3999 nodes, 1.37s } 0-1
+
+[Event "Agent match"]
+[Site "COMP3220"]
+[Date "2026.11.20"]
+[Round "3"]
+[White "Defensive"]
+[Black "Greedy"]
+[Result "1-0"]
+[Opening "Queen's Gambit Declined"]
+[Termination "checkmate"]
+
+1. d4 d5 2. c4 e6 3. Nc3 Nf6 { end of book } 4. Nf3 { score +605, 3673 nodes, 1.30s } 4... dxc4 { 0.00s } 5. e4 { score +660, 4139 nodes, 1.45s } 5... Nxe4 { 0.00s } 6. Nxe4 { score +766, 3207 nodes, 1.12s } 6... Qxd4 { 0.00s } 7. Nxd4 { score +1648, 1848 nodes, 0.74s } 7... Rg8 { 0.00s } 8. Bxc4 { score +1710, 3696 nodes, 1.51s } 8... Nc6 { 0.00s } 9. Nxc6 { score +1830, 4996 nodes, 1.59s } 9... bxc6 { 0.00s } 10. O-O { score +1868, 5045 nodes, 1.50s } 10... Rb8 { 0.00s } 11. Qa4 { score +1923, 5929 nodes, 1.96s } 11... Rxb2 { 0.00s } 12. Bxb2 { score +2331, 3996 nodes, 1.44s } 12... g6 { 0.00s } 13. Nf6+ { score +2835, 4922 nodes, 1.40s } 13... Kd8 { 0.00s } 14. Nxg8 { score +2868, 5055 nodes, 1.71s } 14... c5 { 0.00s } 15. Bf6+ { score +999997, 4635 nodes, 1.23s } 15... Be7 { 0.00s } 16. Bxe7# { score +999999, 4167 nodes, 1.11s } 1-0
+
+[Event "Agent match"]
+[Site "COMP3220"]
+[Date "2026.11.20"]
+[Round "4"]
+[White "Greedy"]
+[Black "Defensive"]
+[Result "0-1"]
+[Opening "Queen's Gambit Declined"]
+[Termination "checkmate"]
+
+1. d4 d5 2. c4 e6 3. Nc3 Nf6 { end of book } 4. Nxd5 { 0.00s } 4... exd5 { score -807, 1055 nodes, 0.37s } 5. cxd5 { 0.00s } 5... Be7 { score -824, 4435 nodes, 2.08s } 6. Nh3 { 0.00s } 6... O-O { score -878, 4601 nodes, 2.09s } 7. Qa4 { 0.00s } 7... Bxh3 { score -1157, 7244 nodes, 3.22s } 8. gxh3 { 0.00s } 8... Qxd5 { score -1338, 2834 nodes, 0.99s } 9. Qxa7 { 0.00s } 9... Rxa7 { score -1935, 4302 nodes, 1.21s } 10. Bh6 { 0.00s } 10... Qxh1 { score -2384, 5698 nodes, 1.75s } 11. Bxg7 { 0.00s } 11... Bb4+ { score -2589, 3443 nodes, 1.02s } 12. Kd1 { 0.00s } 12... Qxf1+ { score -2740, 3829 nodes, 1.24s } 13. Kc2 { 0.00s } 13... Qxa1 { score -2809, 3730 nodes, 1.53s } 14. Bxf8 { 0.00s } 14... Bxf8 { score -2872, 3468 nodes, 0.93s } 15. e4 { 0.00s } 15... Nxe4 { score -3018, 3603 nodes, 0.88s } 16. b4 { 0.00s } 16... Qc3+ { score -999997, 4585 nodes, 1.18s } 17. Kb1 { 0.00s } 17... Nd2# { score -999999, 5262 nodes, 1.26s } 0-1
+

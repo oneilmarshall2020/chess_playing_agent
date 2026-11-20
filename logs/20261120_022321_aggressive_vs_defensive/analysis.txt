@@ -1,0 +1,7 @@
+Stockfish analysis (depth 12); centipawn loss per move, lower is better
+
+Agent          moves  avg CPL  inacc.  mistakes  blunders  opening  middle  endgame
+Aggressive       342       69      52        47        22       92      63        -
+Defensive        341       73      40        48        20       94      68        -
+
+inaccuracy >= 50 cp, mistake >= 100 cp, blunder >= 300 cp; phase columns = average CPL in that phase
