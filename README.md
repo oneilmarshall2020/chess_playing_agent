@@ -161,4 +161,5 @@ logs/              Match output (generated)
 ```
 
 ## AI Disclaimer
-Generative AI was used to assist in completing this project.
+Generative AI was used to assist in completing the code for this project, 
+generate the md files and the documentation.
